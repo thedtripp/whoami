@@ -1,7 +1,6 @@
 # [~]# whoami_
 
-### Who am I?
-### a celebrity face match web application
+### Who am I: a celebrity face match web application
 
 ## Purpose
 This application aims to find images of celebrities that look similar to you based on the facial features in your face. Named for the linux command `whoami` which displays the current user's username.

@@ -36,130 +36,133 @@ class VideoCamera(object):
     def __del__(self):
         self.video.release()
 
-    def get_frame(self):
-        _, image = self.video.read()
-        #DECTECT FACE IN VIDEO CONTINUOUSLY   
-        faces_detected = face_cascade.detectMultiScale(image, scaleFactor=1.2, minNeighbors=5)#, Size(50,50))
-        for (x, y, w, h) in faces_detected:
-            image=cv2.rectangle(image, (x-p, y-p+2), (x+w+p, y+h+p+2), (0, 255, 0), 2)
-            if random.random() > 0.9:
-                image=image[y-p+2:y+h+p-2, x-p+2:x+w+p-2] #use only the detected face; crop it +2 to remove frame # CHECK IF IMAGE EMPTY (OUT OF IMAGE = EMPTY)     
-                _, frame = cv2.imencode('.jpg', cfm.main(image))
-                return True, frame
+    def get_frame(self, capture=False):
+        """Return (status, jpeg). status is 'live', 'no_face' or 'matched'.
+        A match only runs when capture=True (the user pressed the button)."""
+        ok, image = self.video.read()
+        if not ok:
+            return "no_camera", None
+        clean = image.copy()
+        faces = face_cascade.detectMultiScale(image, scaleFactor=1.2, minNeighbors=5)
+        for (x, y, w, h) in faces:
+            cv2.rectangle(image, (x-p, y-p+2), (x+w+p, y+h+p+2), (0, 255, 0), 2)
 
-        image = cv2.flip(image,1)  
-        _, frame = cv2.imencode('.jpg', image)
-        return False, frame
+        if capture:
+            if len(faces) == 0:
+                return "no_face", self._encode(cv2.flip(image, 1))
+            x, y, w, h = max(faces, key=lambda f: f[2] * f[3])  # largest face
+            face = clean[max(y-p+2, 0):y+h+p-2, max(x-p+2, 0):x+w+p-2]
+            if face.size == 0:
+                return "no_face", self._encode(cv2.flip(image, 1))
+            return "matched", self._encode(cfm.main(face))
+
+        return "live", self._encode(cv2.flip(image, 1))
+
+    @staticmethod
+    def _encode(img):
+        _, frame = cv2.imencode('.jpg', img)
+        return frame
+
+def _data_url(frame):
+    return f"data:image/jpeg;base64, {base64.b64encode(frame.tobytes()).decode()}"
 
 # Setup small Quart server for streaming via websocket.
 server = Quart(__name__)
 delay_between_frames = 0.05  # add delay (in seconds) if CPU usage is too high
+RESULT_HOLD_SECONDS = 10
 
 @server.websocket("/stream")
 async def stream():
     camera = VideoCamera(0)  # zero means webcam
-    while True:
-        if delay_between_frames is not None:
-            await asyncio.sleep(delay_between_frames)  # add delay if CPU usage is too high
-        face, frame = camera.get_frame()
+    loop = asyncio.get_running_loop()
+    capture_requested = False
 
-        if face:
-            print("FACE DETECTED")
-            await websocket.send(f"data:image/jpeg;base64, {base64.b64encode(frame.tobytes()).decode()}")
-            wait_time = 10
-            for _ in range(wait_time,0,-1):
-                print(_)
-                time.sleep(1)
+    async def listen():
+        nonlocal capture_requested
+        while True:
+            msg = await websocket.receive()
+            if msg == "capture":
+                capture_requested = True
 
-        await websocket.send(f"data:image/jpeg;base64, {base64.b64encode(frame.tobytes()).decode()}")
+    listener = asyncio.ensure_future(listen())
+    try:
+        while True:
+            await asyncio.sleep(delay_between_frames)
+            capture, capture_requested = capture_requested, False
+            status, frame = await loop.run_in_executor(None, camera.get_frame, capture)
 
-def navbar():
-    return dbc.NavbarSimple(
-        children=[
-            dbc.NavItem(dbc.NavLink("Home", href="#", target="_blank")),
-        ],
-        # brand="[~]$ whoami",
-        brand="[~]# whoami_",
-        color="#080808",
-        sticky='top',
-        dark=True,
-        brand_style={'font-size': 48, 'color': '#25e62e'},
-        style={'height': '80px', 'font-size': 24},
-    )
+            if status == "no_camera":
+                await websocket.send("status:Can't read the camera. Check browser/terminal camera permission.")
+            elif status == "no_face":
+                await websocket.send("status:No face found. Face the camera and try again.")
+                await websocket.send(_data_url(frame))
+            elif status == "matched":
+                await websocket.send("status:Match found! Resuming live view shortly...")
+                await websocket.send(_data_url(frame))
+                await asyncio.sleep(RESULT_HOLD_SECONDS)
+                await websocket.send("status:")
+            else:
+                await websocket.send(_data_url(frame))
+    finally:
+        listener.cancel()
 
-def footer():
-    return dbc.NavbarSimple(
-        children=[
-            dbc.NavItem(dbc.NavLink("Made with ❤️ by DDTripp", href="#", target="_blank"), style={"font-size": "12px"}),
-        ],
-        color="#080808",
-        sticky='bottom',
-        dark=True,
-        brand_style={'font-size': 48, 'color': '#25e62e'},
-        style={'height': '50px', 'font-size': 24},
-    )
+def step(num, title, text):
+    return html.Div(className="step", children=[
+        html.Div(num, className="step-num"),
+        html.Div([html.Div(title, className="step-title"), html.P(text, className="step-text")]),
+    ])
 
-# Create small Dash application for UI.
-# app = dash.Dash(__name__)
-layout = html.Div(children=[
-    navbar(),
-    html.Div(
-        children=[
-            dbc.Row(
-                [
-                    dbc.Col(html.Div(children=[
-                        dbc.Card([
-                            dbc.CardHeader("How to use it"),
-                            dbc.CardBody([
-                                html.H5("1. Take a webcam photo"),
-                                html.P("There should be only one person in the photo. Recommendations: The face should be clearly visible, it’s better to use frontal photos."),
-                                html.H5("2. The system detects the face"),
-                                html.P("The system detects the face and creates a facial pattern. System facial point detection can locate the key components of faces, including eyebrows, eyes, nose, mouth and position. "),
-                                html.H5("3. Enjoy the result"),
-                                html.P("The Neural Network compares the person with celebrity faces and suggests the most similar one."),
-                            ])
-                        ])
-                    ], style={"width": "100%", "box-shadow": "3px 3px 8px #c7c7c7", "border-radius": "2px"}), width=4),
-                    dbc.Col(
-                        html.Div(
-                            dbc.Card(
-                                dbc.CardBody([
-                                    dbc.Row([
-                                        dbc.Col(html.Div(), width=2),
-                                        dbc.Col(html.H1("Who Am I"), style={}),
-                                        dbc.Col(html.H4("A Celebrity Look-Alike Application"), style={}),
-                                        dbc.Col(html.Div(), width=2),
-                                    ]),
-                                    html.Img(
-                                        id="video",
-                                        style={"width":"100%", "display": "block", "margin": "auto"}
-                                    )
-                                ],
-                                style={"width": "100%", "box-shadow": "3px 3px 8px #c7c7c7", "border-radius": "2px"}
-                                )
-                            ),
-                        ), width=8,
-                    ),
-                ],
-            ),
-            dbc.Row([
-                dbc.Col(html.Div()),
-            ])
-        ], style={"padding": "10px"}
-    ),
-    footer(),
-    WebSocket(url=f"ws://127.0.0.1:5000/stream", id="ws")
+layout = html.Div([
+    html.Div(className="topbar", children=[
+        html.Span("[~]# whoami_", className="brand"),
+        html.Span("a celebrity look-alike finder", className="tagline"),
+    ]),
+    html.Div(className="main", children=[
+        html.Div(className="panel", children=[
+            html.Div([html.Span(className="dot"), "live camera"], className="panel-head"),
+            html.Div(className="panel-body", children=[
+                html.Img(id="video"),
+                html.Div(className="capture-row", children=[
+                    html.Button("● Capture", id="capture-btn", className="capture-btn", n_clicks=0),
+                    html.Span(id="status", className="status"),
+                ]),
+            ]),
+        ]),
+        html.Div(className="panel", children=[
+            html.Div("how it works", className="panel-head"),
+            html.Div(className="panel-body", children=[
+                step("1", "Get ready", "One person, face clearly visible, ideally front-on. Take your time."),
+                step("2", "Press Capture", "When the green box is on your face, hit the button. Nothing is captured until you do."),
+                step("3", "Meet your match", "The network compares you against IMDB's top 1,000 actors and shows the closest."),
+            ]),
+        ]),
+    ]),
+    html.Div("made by DDTripp", className="footer"),
+    WebSocket(url="ws://127.0.0.1:5000/stream", id="ws"),
 ])
 
 app.layout = layout
 
-# Copy data from websocket to Img element.
+# Copy data from websocket to the Img element (images) or status text.
 app.clientside_callback(
-    "function(m){return m? m.data : '';}", 
-    Output(f"video", "src"), 
-    Input(f"ws", "message")
+    """function(m){
+        const nu = window.dash_clientside.no_update;
+        if(!m) return [nu, nu];
+        if(m.data.startsWith('status:')) return [nu, m.data.slice(7)];
+        return [m.data, nu];
+    }""",
+    Output("video", "src"),
+    Output("status", "children"),
+    Input("ws", "message"),
+)
+
+# Tell the server to capture when the button is pressed.
+app.clientside_callback(
+    "function(n){ return n ? 'capture' : window.dash_clientside.no_update; }",
+    Output("ws", "send"),
+    Input("capture-btn", "n_clicks"),
 )
 
 if __name__ == '__main__':
-    threading.Thread(target=app.run_server).start()
+    threading.Thread(target=app.run).start()
     server.run()

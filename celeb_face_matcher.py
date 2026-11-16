@@ -8,7 +8,10 @@ and finds the celebrity image with the minimum euclidean
 distance. This should be the most similar looking celebrity.
 """
 import tensorflow as tf
-import tflite_runtime.interpreter as tflite
+try:
+    import tflite_runtime.interpreter as tflite
+except ImportError:
+    tflite = tf.lite
 import numpy as np
 import cv2
 import os

@@ -1,0 +1,24 @@
+:root { --green:#25e62e; --bg:#0a0c0a; --panel:#111611; --line:#1f2b1f; --text:#c9d6c9; --dim:#7f8f7f; }
+html, body { background:var(--bg) !important; color:var(--text); font-family:"SF Mono",Menlo,Consolas,monospace; min-height:100vh; }
+.topbar { border-bottom:1px solid var(--line); padding:18px 32px; display:flex; align-items:baseline; gap:16px; }
+.brand { color:var(--green); font-size:28px; font-weight:700; letter-spacing:-0.5px; text-shadow:0 0 12px rgba(37,230,46,.35); }
+.tagline { color:var(--dim); font-size:14px; }
+.main { max-width:1200px; margin:32px auto; padding:0 24px; display:grid; grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr); gap:24px; }
+@media (max-width:860px){ .main{ grid-template-columns:1fr; } }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.panel-head { padding:10px 16px; border-bottom:1px solid var(--line); color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:1.5px; display:flex; align-items:center; gap:8px; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); animation:pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity:.3; } }
+.panel-body { padding:16px; }
+#video { width:100%; display:block; border-radius:4px; background:#000; min-height:320px; border:1px solid var(--line); }
+.step { display:flex; gap:12px; margin-bottom:18px; }
+.step:last-child { margin-bottom:0; }
+.step-num { color:var(--green); font-weight:700; font-size:18px; }
+.step-title { color:#e6f0e6; font-weight:600; margin-bottom:4px; }
+.step-text { color:var(--dim); font-size:13px; line-height:1.5; margin:0; }
+.footer { text-align:center; color:var(--dim); font-size:12px; padding:24px; }
+.capture-row { display:flex; align-items:center; gap:16px; margin-top:14px; }
+.capture-btn { background:var(--green); color:#041004; border:0; border-radius:6px; padding:10px 22px; font:inherit; font-weight:700; cursor:pointer; box-shadow:0 0 14px rgba(37,230,46,.3); transition:transform .08s, box-shadow .15s; }
+.capture-btn:hover { box-shadow:0 0 22px rgba(37,230,46,.55); }
+.capture-btn:active { transform:scale(.97); }
+.status { color:var(--dim); font-size:13px; }
